@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
@@ -13,9 +14,15 @@ type HttpHeader struct {
 	UserAgent string
 }
 
+var basePath *string
+
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
-	fmt.Println("Logs from your program will appear here!")
+	if len(os.Args) == 3 {
+		str := os.Args[2]
+		basePath = &str
+	}
+	fmt.Println(os.Args)
 
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
@@ -48,9 +55,38 @@ func routeRequest(conn net.Conn) {
 		echoHandler(conn, &header)
 	} else if header.Method == "GET" && header.Path == "/user-agent" {
 		userAgentHandler(conn, &header)
+	} else if header.Method == "GET" && strings.HasPrefix(header.Path, "/files/")  {
+		fileHandler(conn, &header)
 	} else {
 		conn.Write([]byte("HTTP/1.1 404\r\n\r\n"))
 	}
+}
+
+func fileHandler(conn net.Conn, header *HttpHeader) {
+	if basePath == nil {
+		fmt.Println("Base path not set")
+		writeHeaders(conn, 500, map[string]string{})
+		return
+	}
+	fmt.Println("Base path: ", *basePath)
+	filePath := header.Path[7:]
+	fmt.Println("File path: ", filePath)
+	file, err := os.Open(*basePath + "/" + filePath)
+	if err != nil {
+		conn.Write([]byte("HTTP/1.1 404\r\n\r\n"))
+		fmt.Println("Error opening file: ", err)
+		return
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		conn.Write([]byte("HTTP/1.1 500\r\n\r\n"))
+		return
+	}
+
+	writeHeaders(conn, 200, map[string]string{"Content-Type": "application/octet-stream", "Content-Length": fmt.Sprintf("%d", stat.Size())})
+	io.Copy(conn, file)
 }
 
 func userAgentHandler(conn net.Conn, header *HttpHeader) {
