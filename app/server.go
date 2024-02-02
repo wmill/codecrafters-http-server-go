@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -25,7 +26,12 @@ func main() {
 		}
 		buffer := make([]byte, 1024)
 		conn.Read(buffer);
-		conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+		fmt.Println(string(buffer))
+		if strings.HasPrefix(string(buffer), "GET / HTTP/1.1") {
+			conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+		} else {
+			conn.Write([]byte("HTTP/1.1 404\r\n\r\n"))
+		}
 	}
 }
 
