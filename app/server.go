@@ -30,22 +30,24 @@ func main() {
 			fmt.Println("Error accepting connection: ", err.Error())
 			os.Exit(1)
 		}
-		buffer := make([]byte, 1024)
-		conn.Read(buffer);
-		fmt.Println(string(buffer))
-		header := parseHttpHeader(buffer)
-		routeRequest(conn, &header)
-		conn.Close()
+
+		go routeRequest(conn)
 	}
 }
 
-func routeRequest(conn net.Conn, header *HttpHeader) {
+func routeRequest(conn net.Conn) {
+	buffer := make([]byte, 1024)
+	conn.Read(buffer);
+	fmt.Println(string(buffer))
+	header := parseHttpHeader(buffer)
+
+	defer conn.Close()
 	if header.Method == "GET" && header.Path == "/"{
 		conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
 	} else if header.Method == "GET" && strings.HasPrefix(header.Path, "/echo") {
-		echoHandler(conn, header)
+		echoHandler(conn, &header)
 	} else if header.Method == "GET" && header.Path == "/user-agent" {
-		userAgentHandler(conn, header)
+		userAgentHandler(conn, &header)
 	} else {
 		conn.Write([]byte("HTTP/1.1 404\r\n\r\n"))
 	}
