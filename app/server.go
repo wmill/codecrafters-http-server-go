@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -12,6 +14,7 @@ type HttpHeader struct {
 	Path string
 	Method string
 	UserAgent string
+	ContentLength int
 }
 
 var basePath *string
@@ -43,10 +46,7 @@ func main() {
 }
 
 func routeRequest(conn net.Conn) {
-	buffer := make([]byte, 1024)
-	conn.Read(buffer);
-	fmt.Println(string(buffer))
-	header := parseHttpHeader(buffer)
+	header := readHttpHeader(conn)
 
 	defer conn.Close()
 	if header.Method == "GET" && header.Path == "/"{
@@ -57,8 +57,45 @@ func routeRequest(conn net.Conn) {
 		userAgentHandler(conn, &header)
 	} else if header.Method == "GET" && strings.HasPrefix(header.Path, "/files/")  {
 		fileHandler(conn, &header)
+	} else if header.Method == "POST" && strings.HasPrefix(header.Path, "/files/")  {
+		handleFileUpload(conn, &header)
 	} else {
 		conn.Write([]byte("HTTP/1.1 404\r\n\r\n"))
+	}
+}
+
+func handleFileUpload(conn net.Conn, header *HttpHeader) {
+	// not a proper implementation, we aren't dealing with multipart/form-data or anything like that
+
+	if basePath == nil {
+		fmt.Println("Base path not set")
+		writeHeaders(conn, 500, map[string]string{})
+		return
+	}
+	fmt.Println("Base path: ", *basePath)
+	filePath := header.Path[7:]
+	fmt.Println("File path: ", filePath)
+	file, err := os.OpenFile(*basePath + "/" + filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		writeHeaders(conn, 500, map[string]string{})
+		fmt.Println("Error opening file: ", err)
+		return
+	}
+	defer file.Close()
+	buffer := make([]byte, header.ContentLength)
+	for {
+		n, err := io.ReadFull(conn, buffer)
+		fmt.Println("Read ", n, " bytes")
+
+		if err == io.EOF {
+			file.Write(buffer)
+			return
+		} else if err != nil {
+			writeHeaders(conn, 500, map[string]string{})
+			fmt.Println("Error reading from connection: ", err)
+			return
+		}
+		file.Write(buffer)
 	}
 }
 
@@ -100,9 +137,28 @@ func echoHandler(conn net.Conn, header *HttpHeader) {
 	conn.Write([]byte(echoMessage))
 }
 
-func parseHttpHeader(buffer []byte) HttpHeader {
+func readHttpHeader(conn net.Conn) HttpHeader {
+	reader := bufio.NewReader(conn)
+	builder := strings.Builder{}
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("Error reading from connection: ", err)
+			break
+		}
+		builder.WriteString(line)
+		if line == "\r\n" {
+			break
+		}
+	}
+	fmt.Println("Header: ", builder.String())
+	return parseHttpHeader(builder.String())
+}
+
+
+func parseHttpHeader(headerString string) HttpHeader {
 	// Implement the function here
-	lines := strings.Split(string(buffer), "\r\n")
+	lines := strings.Split(headerString, "\r\n")
 	firstLine := strings.Split(lines[0], " ")
 
 	// create a map with the rest of the headers
@@ -115,7 +171,12 @@ func parseHttpHeader(buffer []byte) HttpHeader {
 		headers[header[0]] = strings.TrimSpace(header[1])
 	}
 
-	return HttpHeader{Path: firstLine[1], Method: firstLine[0], UserAgent: headers["User-Agent"]}
+	contentLength, err := strconv.Atoi(headers["Content-Length"])
+	if err != nil {
+		contentLength = 0
+	}
+
+	return HttpHeader{Path: firstLine[1], Method: firstLine[0], UserAgent: headers["User-Agent"], ContentLength: contentLength}
 }
 
 func writeHeaders(conn net.Conn, status int, headers map[string]string) {
