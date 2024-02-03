@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -46,9 +47,23 @@ func main() {
 }
 
 func routeRequest(conn net.Conn) {
-	header := readHttpHeader(conn)
-
 	defer conn.Close()
+
+	headerString := readUntilNewline(conn)
+	// data, err := io.ReadAll(conn)
+	// if err != nil {
+	// 	fmt.Println("Error reading from connection: ", err)
+	// 	writeHeaders(conn, 500, map[string]string{})
+	// 	return
+	
+	// }
+	// fmt.Printf("Data: %q\n", string(data))
+
+	header := readHttpHeader([]byte(headerString))
+
+	// _, fileData, _ := strings.Cut(string(data), "\r\n\r\n")
+
+	
 	if header.Method == "GET" && header.Path == "/"{
 		conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
 	} else if header.Method == "GET" && strings.HasPrefix(header.Path, "/echo") {
@@ -82,21 +97,20 @@ func handleFileUpload(conn net.Conn, header *HttpHeader) {
 		return
 	}
 	defer file.Close()
-	buffer := make([]byte, header.ContentLength)
-	for {
-		n, err := io.ReadFull(conn, buffer)
-		fmt.Println("Read ", n, " bytes")
 
-		if err == io.EOF {
-			file.Write(buffer)
-			return
-		} else if err != nil {
-			writeHeaders(conn, 500, map[string]string{})
-			fmt.Println("Error reading from connection: ", err)
-			return
-		}
-		file.Write(buffer)
+
+	buffer := make([]byte, header.ContentLength)
+	n, err := io.ReadFull(conn, buffer)
+	fmt.Println("Read ", n, " bytes")
+	file.Write(buffer)
+	if err == io.EOF {
+		fmt.Println("EOF - no data read")
+	} else if err != nil {
+		writeHeaders(conn, 500, map[string]string{})
+		fmt.Println("Error reading from connection: ", err)
+		return
 	}
+	writeHeaders(conn, 201, map[string]string{})
 }
 
 func fileHandler(conn net.Conn, header *HttpHeader) {
@@ -137,8 +151,8 @@ func echoHandler(conn net.Conn, header *HttpHeader) {
 	conn.Write([]byte(echoMessage))
 }
 
-func readHttpHeader(conn net.Conn) HttpHeader {
-	reader := bufio.NewReader(conn)
+func readHttpHeader(conn []byte) HttpHeader {
+	reader := bufio.NewReader(bytes.NewReader(conn))
 	builder := strings.Builder{}
 	for {
 		line, err := reader.ReadString('\n')
@@ -186,4 +200,22 @@ func writeHeaders(conn net.Conn, status int, headers map[string]string) {
 		conn.Write([]byte(fmt.Sprintf("%s: %s\r\n", key, value)))
 	}
 	conn.Write([]byte("\r\n"))
+}
+
+func readUntilNewline(conn net.Conn) string {
+	builder := strings.Builder{}
+	for {
+		buffer := make([]byte, 1)
+		_, err := conn.Read(buffer)
+		if err != nil {
+			fmt.Println("Error reading from connection: ", err)
+			break
+		}
+		builder.Write(buffer)
+
+		if strings.HasSuffix(builder.String(), "\r\n\r\n") {
+			break
+		}
+	}
+	return builder.String()
 }
