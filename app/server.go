@@ -21,7 +21,6 @@ type HttpHeader struct {
 var basePath *string
 
 func main() {
-	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	if len(os.Args) == 3 {
 		str := os.Args[2]
 		basePath = &str
@@ -50,19 +49,8 @@ func routeRequest(conn net.Conn) {
 	defer conn.Close()
 
 	headerString := readUntilNewline(conn)
-	// data, err := io.ReadAll(conn)
-	// if err != nil {
-	// 	fmt.Println("Error reading from connection: ", err)
-	// 	writeHeaders(conn, 500, map[string]string{})
-	// 	return
-	
-	// }
-	// fmt.Printf("Data: %q\n", string(data))
 
 	header := readHttpHeader([]byte(headerString))
-
-	// _, fileData, _ := strings.Cut(string(data), "\r\n\r\n")
-
 	
 	if header.Method == "GET" && header.Path == "/"{
 		conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
@@ -171,7 +159,6 @@ func readHttpHeader(conn []byte) HttpHeader {
 
 
 func parseHttpHeader(headerString string) HttpHeader {
-	// Implement the function here
 	lines := strings.Split(headerString, "\r\n")
 	firstLine := strings.Split(lines[0], " ")
 
@@ -194,7 +181,6 @@ func parseHttpHeader(headerString string) HttpHeader {
 }
 
 func writeHeaders(conn net.Conn, status int, headers map[string]string) {
-	// Implement the function here
 	conn.Write([]byte(fmt.Sprintf("HTTP/1.1 %d\r\n", status)))
 	for key, value := range headers {
 		conn.Write([]byte(fmt.Sprintf("%s: %s\r\n", key, value)))
